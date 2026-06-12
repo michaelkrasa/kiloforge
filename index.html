@@ -26,6 +26,36 @@
         </div>
       </header>
 
+      <section class="auth-panel" aria-label="Account and dashboard">
+        <div>
+          <strong id="authTitle">Your event dashboard</strong>
+          <span id="authSubtitle">Sign in to keep saves and interests across devices.</span>
+        </div>
+        <div id="authActions" class="auth-actions">
+          <button id="googleLoginButton" type="button">Continue with Google</button>
+          <button id="signOutButton" class="quiet-button" type="button" hidden>Sign out</button>
+        </div>
+      </section>
+
+      <section id="dashboardPanel" class="dashboard-panel" aria-label="Personal dashboard">
+        <article>
+          <span>Saved</span>
+          <strong id="savedCount">0</strong>
+        </article>
+        <article>
+          <span>Interested</span>
+          <strong id="interestedCount">0</strong>
+        </article>
+        <article>
+          <span>Hidden</span>
+          <strong id="hiddenCount">0</strong>
+        </article>
+        <article>
+          <span>Best next event</span>
+          <strong id="bestNextEvent">Sign in to personalize</strong>
+        </article>
+      </section>
+
       <section class="controls" aria-label="Event filters">
         <div class="control-group wide">
           <label for="searchInput">Search</label>
@@ -136,6 +166,7 @@
           <div class="card-actions">
             <button class="interested-button" type="button">Interested</button>
             <button class="save-button" type="button">Save</button>
+            <button class="hide-button" type="button">Hide</button>
             <a class="source-link" target="_blank" rel="noreferrer">Open source</a>
           </div>
         </article>

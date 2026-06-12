@@ -15,8 +15,10 @@ const CATEGORIES = [
 const state = {
   events: [],
   stats: new Map(),
+  userInteractions: new Map(),
   recordedInteractions: new Set(),
   viewedEvents: new Set(),
+  user: null,
   source: "loading",
   filters: {
     search: "",
@@ -37,13 +39,21 @@ const els = {
   categoryFilters: document.querySelector("#categoryFilters"),
   connectionStatus: document.querySelector("#connectionStatus"),
   dataSource: document.querySelector("#dataSource"),
+  authSubtitle: document.querySelector("#authSubtitle"),
+  authTitle: document.querySelector("#authTitle"),
+  bestNextEvent: document.querySelector("#bestNextEvent"),
   eventGrid: document.querySelector("#eventGrid"),
+  googleLoginButton: document.querySelector("#googleLoginButton"),
+  hiddenCount: document.querySelector("#hiddenCount"),
+  interestedCount: document.querySelector("#interestedCount"),
   locationFilter: document.querySelector("#locationFilter"),
   priceFilter: document.querySelector("#priceFilter"),
   rankSummary: document.querySelector("#rankSummary"),
   resetButton: document.querySelector("#resetButton"),
   resultCount: document.querySelector("#resultCount"),
   searchInput: document.querySelector("#searchInput"),
+  savedCount: document.querySelector("#savedCount"),
+  signOutButton: document.querySelector("#signOutButton"),
   sizeFilter: document.querySelector("#sizeFilter"),
   sortFilter: document.querySelector("#sortFilter"),
   strictToggle: document.querySelector("#strictToggle"),
@@ -65,6 +75,7 @@ async function init() {
         config.supabaseUrl,
         config.supabasePublishableKey,
       );
+      await initAuth();
       await loadFromSupabase();
       subscribeToRealtime();
       setConnection("Live", false);
@@ -80,6 +91,21 @@ async function init() {
   }
 
   render();
+}
+
+async function initAuth() {
+  const {
+    data: { session },
+  } = await state.supabase.auth.getSession();
+  state.user = session?.user || null;
+  updateAuthPanel();
+
+  state.supabase.auth.onAuthStateChange((_event, session) => {
+    state.user = session?.user || null;
+    state.recordedInteractions = new Set();
+    updateAuthPanel();
+    loadUserInteractions().then(render).catch(console.warn);
+  });
 }
 
 async function fetchConfig() {
@@ -104,6 +130,27 @@ async function loadFromSupabase() {
 
   state.events = (events || []).map(normalizeEvent);
   await loadStats();
+  await loadUserInteractions();
+}
+
+async function loadUserInteractions() {
+  state.userInteractions = new Map();
+  if (!state.supabase || !state.user) return;
+
+  const { data, error } = await state.supabase
+    .from("event_interactions")
+    .select("event_id, kind, created_at")
+    .in("event_id", state.events.map((event) => event.id))
+    .in("kind", ["save", "interested", "hide"])
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  (data || []).forEach((interaction) => {
+    const kinds = state.userInteractions.get(interaction.event_id) || new Set();
+    kinds.add(interaction.kind);
+    state.userInteractions.set(interaction.event_id, kinds);
+  });
 }
 
 async function loadStats() {
@@ -210,6 +257,8 @@ function bindControls() {
     render();
   });
   els.resetButton.addEventListener("click", resetFilters);
+  els.googleLoginButton.addEventListener("click", () => signInWithGoogle());
+  els.signOutButton.addEventListener("click", () => signOut());
 }
 
 function render() {
@@ -230,6 +279,7 @@ function render() {
       ? "Showing exact-filter matches"
       : "Ranking by fit, with broad discovery";
   els.activeFilters.textContent = describeActiveFilters();
+  updateDashboard(ranked);
 
   if (ranked.length === 0) {
     renderState(
@@ -249,7 +299,10 @@ function renderEventCard(event, ranking) {
     recordInteraction(event.id, "view");
   }
   const stats = state.stats.get(event.id) || {};
+  const userKinds = state.userInteractions.get(event.id) || new Set();
   const start = new Date(event.start_at);
+  node.classList.toggle("is-saved", userKinds.has("save"));
+  node.classList.toggle("is-interested", userKinds.has("interested"));
 
   node.querySelector(".event-meta").textContent = formatDateTime(start);
   node.querySelector("h2").textContent = event.title;
@@ -280,6 +333,9 @@ function renderEventCard(event, ranking) {
   node.querySelector(".save-button").addEventListener("click", () => {
     recordInteraction(event.id, "save");
   });
+  node.querySelector(".hide-button").addEventListener("click", () => {
+    recordInteraction(event.id, "hide");
+  });
 
   const sourceLink = node.querySelector(".source-link");
   sourceLink.href = event.source_url || "#";
@@ -309,12 +365,21 @@ function scoreEvent(event) {
   const priceScore = scorePrice(event, reasons, penalties);
   const sizeScore = scoreSize(event, reasons, penalties);
   const freshnessScore = Math.round((event.source_confidence || 0.7) * 5);
+  const userKinds = state.userInteractions.get(event.id) || new Set();
+  const personalizationScore =
+    (userKinds.has("save") ? 4 : 0) + (userKinds.has("interested") ? 4 : 0);
 
   const score = Math.max(
     0,
     Math.min(
       100,
-      categoryScore + timeScore + locationScore + priceScore + sizeScore + freshnessScore,
+      categoryScore +
+        timeScore +
+        locationScore +
+        priceScore +
+        sizeScore +
+        freshnessScore +
+        personalizationScore,
     ),
   );
 
@@ -399,6 +464,7 @@ function scoreSize(event, reasons, penalties) {
 
 function passesFilters(event, ranking) {
   if (new Date(event.start_at) < startOfDay(new Date())) return false;
+  if (state.userInteractions.get(event.id)?.has("hide")) return false;
   if (state.filters.search && !matchesSearch(event, state.filters.search)) return false;
   if (scoreTime(event, [], []) === 0) return false;
   if (!state.filters.strict) return true;
@@ -431,6 +497,12 @@ function sortRankedEvents(a, b) {
 }
 
 async function recordInteraction(eventId, kind) {
+  const personalAction = ["save", "hide", "interested"].includes(kind);
+  if (personalAction && state.source === "supabase" && !state.user) {
+    els.authSubtitle.textContent = "Sign in with Google first so this action lands on your dashboard.";
+    return;
+  }
+
   const oncePerSession = ["view", "save", "hide", "interested"].includes(kind);
   const interactionKey = `${eventId}:${kind}`;
   if (oncePerSession && state.recordedInteractions.has(interactionKey)) return;
@@ -456,6 +528,7 @@ async function recordInteraction(eventId, kind) {
   const { error } = await state.supabase.from("event_interactions").insert({
     event_id: eventId,
     session_id: state.sessionId,
+    user_id: state.user?.id || null,
     kind,
   });
 
@@ -463,7 +536,71 @@ async function recordInteraction(eventId, kind) {
     if (error.code === "23505") return;
     if (oncePerSession) state.recordedInteractions.delete(interactionKey);
     console.warn(error);
+    return;
   }
+
+  if (["save", "interested", "hide"].includes(kind)) {
+    const kinds = state.userInteractions.get(eventId) || new Set();
+    kinds.add(kind);
+    state.userInteractions.set(eventId, kinds);
+    render();
+  }
+}
+
+async function signInWithGoogle() {
+  if (!state.supabase) return;
+  await state.supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
+}
+
+async function signOut() {
+  if (!state.supabase) return;
+  await state.supabase.auth.signOut();
+}
+
+function updateAuthPanel() {
+  if (!state.user) {
+    els.authTitle.textContent = "Your event dashboard";
+    els.authSubtitle.textContent =
+      state.source === "fallback"
+        ? "Connect Supabase to enable Google sign-in."
+        : "Continue with Google to keep saves and interests across devices.";
+    els.googleLoginButton.hidden = state.source === "fallback";
+    els.signOutButton.hidden = true;
+    return;
+  }
+
+  const name =
+    state.user.user_metadata?.full_name ||
+    state.user.user_metadata?.name ||
+    state.user.email ||
+    "Signed-in explorer";
+  els.authTitle.textContent = name;
+  els.authSubtitle.textContent = "Your saved, interested, and hidden events now follow you.";
+  els.googleLoginButton.hidden = true;
+  els.signOutButton.hidden = false;
+}
+
+function updateDashboard(ranked) {
+  let saved = 0;
+  let interested = 0;
+  let hidden = 0;
+
+  state.userInteractions.forEach((kinds) => {
+    if (kinds.has("save")) saved += 1;
+    if (kinds.has("interested")) interested += 1;
+    if (kinds.has("hide")) hidden += 1;
+  });
+
+  els.savedCount.textContent = saved;
+  els.interestedCount.textContent = interested;
+  els.hiddenCount.textContent = hidden;
+  els.bestNextEvent.textContent =
+    ranked[0]?.event.title || (state.user ? "No match yet" : "Sign in to personalize");
 }
 
 function resetFilters() {

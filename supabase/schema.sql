@@ -31,10 +31,14 @@ create table if not exists public.events (
 create table if not exists public.event_interactions (
   id bigint generated always as identity primary key,
   event_id text not null references public.events(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
   session_id text not null,
   kind text not null check (kind in ('view', 'save', 'hide', 'interested', 'click')),
   created_at timestamptz not null default now()
 );
+
+alter table public.event_interactions
+add column if not exists user_id uuid references auth.users(id) on delete cascade;
 
 create table if not exists public.event_stats (
   event_id text primary key references public.events(id) on delete cascade,
@@ -51,6 +55,7 @@ create index if not exists events_categories_idx on public.events using gin (cat
 create index if not exists events_location_idx on public.events using gist (location);
 create index if not exists event_interactions_event_id_idx on public.event_interactions (event_id);
 create index if not exists event_interactions_session_id_idx on public.event_interactions (session_id);
+create index if not exists event_interactions_user_id_idx on public.event_interactions (user_id);
 
 delete from public.event_interactions duplicate
 using public.event_interactions original
@@ -63,6 +68,10 @@ where duplicate.id > original.id
 create unique index if not exists event_interactions_once_per_session_idx
 on public.event_interactions (event_id, session_id, kind)
 where kind in ('view', 'save', 'hide', 'interested');
+
+create unique index if not exists event_interactions_once_per_user_idx
+on public.event_interactions (event_id, user_id, kind)
+where user_id is not null and kind in ('view', 'save', 'hide', 'interested');
 
 alter table public.events enable row level security;
 alter table public.event_interactions enable row level security;
@@ -81,8 +90,26 @@ using (true);
 drop policy if exists "Anonymous users can insert interactions" on public.event_interactions;
 create policy "Anonymous users can insert interactions"
 on public.event_interactions for insert
+to anon
 with check (
   kind in ('view', 'save', 'hide', 'interested', 'click')
+  and user_id is null
+  and length(session_id) between 12 and 120
+);
+
+drop policy if exists "Authenticated users can read their interactions" on public.event_interactions;
+create policy "Authenticated users can read their interactions"
+on public.event_interactions for select
+to authenticated
+using ((select auth.uid()) = user_id);
+
+drop policy if exists "Authenticated users can insert their interactions" on public.event_interactions;
+create policy "Authenticated users can insert their interactions"
+on public.event_interactions for insert
+to authenticated
+with check (
+  (select auth.uid()) = user_id
+  and kind in ('view', 'save', 'hide', 'interested', 'click')
   and length(session_id) between 12 and 120
 );
 
@@ -91,6 +118,10 @@ grant select on public.events to anon;
 grant select on public.event_stats to anon;
 grant insert on public.event_interactions to anon;
 grant usage, select on sequence public.event_interactions_id_seq to anon;
+grant select on public.events to authenticated;
+grant select on public.event_stats to authenticated;
+grant select, insert on public.event_interactions to authenticated;
+grant usage, select on sequence public.event_interactions_id_seq to authenticated;
 
 create or replace function public.set_event_location()
 returns trigger

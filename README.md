@@ -8,7 +8,8 @@ Production: https://kiloforge-eosin.vercel.app
 
 - Fetches upcoming SF events from Supabase Postgres.
 - Ranks events by match score across time, neighborhood, category, price, and size/vibe.
-- Lets anonymous visitors save, mark interested, and click through to sources.
+- Lets visitors browse anonymously, then sign in with Google for a personal dashboard.
+- Persists saved, interested, and hidden events per signed-in user.
 - Subscribes to Supabase Realtime updates for live event stats.
 - Falls back to `data/events.json` if Supabase is not configured yet.
 
@@ -29,6 +30,20 @@ For a new environment:
 The current Vercel production project already has these two public env vars configured.
 
 Only use a Supabase publishable/anon key in Vercel for the browser app. Do not expose a service-role key.
+
+## Google OAuth
+
+The app is wired for Supabase Google OAuth. To enable live sign-in:
+
+1. Create Google OAuth credentials in Google Cloud.
+2. Add the Supabase callback URL as an authorized redirect URI:
+   - `https://vhjhfnhgoldxevjfrrsz.supabase.co/auth/v1/callback`
+3. In Supabase Auth providers, enable Google and add the Google client ID and secret.
+4. In Supabase Auth URL configuration, set:
+   - Site URL: `https://kiloforge-eosin.vercel.app`
+   - Redirect URLs: production URL plus local preview URLs such as `http://localhost:4174`
+
+The repo includes `supabase/config.toml` with the intended redirect and Google provider shape, but provider secrets should stay in Supabase, not git.
 
 ## Local Preview
 
