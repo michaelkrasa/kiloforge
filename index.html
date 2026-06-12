@@ -3,44 +3,143 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="A lorem ipsum placeholder site for Kiloforge">
-    <title>Kiloforge Lorem Ipsum</title>
+    <meta
+      name="description"
+      content="A real-time San Francisco event discovery app with match scoring."
+    >
+    <title>Signal SF Events</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="app.js"></script>
   </head>
   <body>
-    <main class="shell">
-      <section class="hero" aria-labelledby="title">
-        <p class="eyebrow">Kiloforge</p>
-        <h1 id="title">Lorem ipsum dolor sit amet.</h1>
-        <p class="lede">
-          Consectetur adipiscing elit. Integer posuere erat a ante venenatis
-          dapibus posuere velit aliquet.
-        </p>
-        <div class="copy-grid" aria-label="Placeholder text">
-          <article>
-            <h2>Dolor</h2>
-            <p>
-              Sed posuere consectetur est at lobortis. Donec ullamcorper nulla
-              non metus auctor fringilla. Cras mattis consectetur purus sit amet
-              fermentum.
-            </p>
-          </article>
-          <article>
-            <h2>Sit Amet</h2>
-            <p>
-              Maecenas faucibus mollis interdum. Aenean lacinia bibendum nulla
-              sed consectetur. Vestibulum id ligula porta felis euismod semper.
-            </p>
-          </article>
-          <article>
-            <h2>Consectetur</h2>
-            <p>
-              Praesent commodo cursus magna, vel scelerisque nisl consectetur et.
-              Nullam quis risus eget urna mollis ornare vel eu leo.
-            </p>
-          </article>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Signal SF</p>
+          <h1>Events worth leaving the house for.</h1>
         </div>
+        <div class="status-panel" aria-live="polite">
+          <span id="connectionStatus" class="status-dot">Connecting</span>
+          <strong id="resultCount">0 events</strong>
+          <span id="dataSource">Loading source</span>
+        </div>
+      </header>
+
+      <section class="controls" aria-label="Event filters">
+        <div class="control-group wide">
+          <label for="searchInput">Search</label>
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search events, venues, tags"
+            autocomplete="off"
+          >
+        </div>
+
+        <div class="control-group">
+          <label for="timeFilter">When</label>
+          <select id="timeFilter">
+            <option value="next7">Next 7 days</option>
+            <option value="today">Today</option>
+            <option value="tomorrow">Tomorrow</option>
+            <option value="weekend">This weekend</option>
+            <option value="next30">Next 30 days</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="locationFilter">Where</label>
+          <select id="locationFilter">
+            <option value="all">All SF</option>
+            <option value="Mission">Mission</option>
+            <option value="SoMa">SoMa</option>
+            <option value="Hayes Valley">Hayes Valley</option>
+            <option value="North Beach">North Beach</option>
+            <option value="Golden Gate Park">Golden Gate Park</option>
+            <option value="Castro">Castro</option>
+            <option value="Marina">Marina</option>
+            <option value="Richmond">Richmond</option>
+            <option value="Sunset">Sunset</option>
+            <option value="Dogpatch">Dogpatch</option>
+            <option value="Chinatown">Chinatown</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="priceFilter">Price</label>
+          <select id="priceFilter">
+            <option value="any">Any price</option>
+            <option value="free">Free</option>
+            <option value="low">$</option>
+            <option value="mid">$$</option>
+            <option value="high">$$$</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="sizeFilter">Vibe</label>
+          <select id="sizeFilter">
+            <option value="any">Any size</option>
+            <option value="intimate">Intimate</option>
+            <option value="medium">Medium</option>
+            <option value="big">Big crowd</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="sortFilter">Sort</label>
+          <select id="sortFilter">
+            <option value="match">Best match</option>
+            <option value="soonest">Soonest</option>
+            <option value="cheapest">Cheapest</option>
+          </select>
+        </div>
+
+        <fieldset class="category-panel">
+          <legend>Categories</legend>
+          <div id="categoryFilters" class="chip-row" aria-label="Categories"></div>
+        </fieldset>
+
+        <label class="exact-toggle">
+          <input id="strictToggle" type="checkbox">
+          <span>Exact filters</span>
+        </label>
       </section>
+
+      <section class="insight-strip" aria-label="Current ranking">
+        <div>
+          <strong id="rankSummary">Ranking upcoming events</strong>
+          <span id="activeFilters">Broad discovery mode</span>
+        </div>
+        <button id="resetButton" type="button">Reset</button>
+      </section>
+
+      <section id="eventGrid" class="event-grid" aria-live="polite"></section>
+
+      <template id="eventCardTemplate">
+        <article class="event-card">
+          <div class="card-head">
+            <div>
+              <p class="event-meta"></p>
+              <h2></h2>
+            </div>
+            <div class="match-badge">
+              <strong></strong>
+              <span>match</span>
+            </div>
+          </div>
+          <p class="event-description"></p>
+          <div class="detail-grid"></div>
+          <p class="reason-line"></p>
+          <div class="stat-row"></div>
+          <div class="card-actions">
+            <button class="interested-button" type="button">Interested</button>
+            <button class="save-button" type="button">Save</button>
+            <a class="source-link" target="_blank" rel="noreferrer">Open source</a>
+          </div>
+        </article>
+      </template>
     </main>
   </body>
 </html>
